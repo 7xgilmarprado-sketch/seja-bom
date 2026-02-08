@@ -27,6 +27,45 @@ const AuthScreen: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
+  // Verifica se o usuário chegou via link de confirmação de email ou recuperação
+  useEffect(() => {
+    const handleUrlParams = () => {
+      const hash = window.location.hash;
+      if (!hash) return;
+
+      // Remove o '#' inicial e analisa os parâmetros
+      const params = new URLSearchParams(hash.substring(1));
+      
+      const errorDescription = params.get('error_description');
+      const type = params.get('type');
+      const accessToken = params.get('access_token');
+
+      // Caso de Erro (Link expirado, inválido, etc)
+      if (errorDescription) {
+        const decodedError = decodeURIComponent(errorDescription).replace(/\+/g, ' ');
+        if (decodedError.includes('expired')) {
+          setError('Este link expirou ou já foi utilizado. Tente entrar ou solicite um novo.');
+        } else {
+          setError(decodedError);
+        }
+        // Limpa a URL para ficar limpo
+        window.history.replaceState(null, '', window.location.pathname);
+      } 
+      // Caso de Sucesso (Confirmação de Signup ou Recuperação)
+      else if (type === 'signup' || (accessToken && !errorDescription)) {
+        setMessage('Email confirmado com sucesso! Sua conta está ativa.');
+        // Limpa a URL
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+      else if (type === 'recovery') {
+        setIsForgotPassword(true); // Força tela de recuperação para definir nova senha se necessário
+        setMessage('Defina sua nova senha abaixo (se aplicável) ou entre na conta.');
+      }
+    };
+
+    handleUrlParams();
+  }, []);
+
   const handleAuth = async () => {
     setLoading(true);
     setError('');
@@ -35,7 +74,8 @@ const AuthScreen: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
     try {
       if (isForgotPassword) {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: window.location.origin,
+          // Força o redirecionamento para o app em produção, não localhost
+          redirectTo: 'https://seja-bom.vercel.app/',
         });
         if (error) throw error;
         setMessage('Verifique seu e-mail para redefinir a senha.');
@@ -53,9 +93,13 @@ const AuthScreen: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
         const { error } = await supabase.auth.signUp({
           email,
           password,
+          options: {
+            // Garante que a confirmação de cadastro volte para a produção
+            emailRedirectTo: 'https://seja-bom.vercel.app/'
+          }
         });
         if (error) throw error;
-        alert('Conta criada! Você já pode entrar.');
+        alert('Conta criada! Verifique seu email para confirmar.');
         setIsSignUp(false);
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -101,8 +145,8 @@ const AuthScreen: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
             />
           </div>
 
-          {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-          {message && <p className="text-green-500 text-sm text-center">{message}</p>}
+          {error && <p className="text-red-500 text-sm text-center font-bold bg-red-50 p-3 rounded-lg border border-red-100">{error}</p>}
+          {message && <p className="text-green-600 text-sm text-center font-bold bg-green-50 p-3 rounded-lg border border-green-100">{message}</p>}
 
           <Button fullWidth onClick={handleAuth} loading={loading}>
             Enviar Link
@@ -162,7 +206,8 @@ const AuthScreen: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
           </div>
         )}
 
-        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+        {error && <p className="text-red-500 text-sm text-center font-bold bg-red-50 p-3 rounded-lg border border-red-100">{error}</p>}
+        {message && <p className="text-green-600 text-sm text-center font-bold bg-green-50 p-3 rounded-lg border border-green-100">{message}</p>}
 
         <Button fullWidth onClick={handleAuth} loading={loading}>
           {isSignUp ? 'Criar Conta' : 'Entrar'}
@@ -170,7 +215,7 @@ const AuthScreen: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
 
         <div className="flex flex-col items-center gap-3 mt-4">
           <button 
-            onClick={() => { setIsSignUp(!isSignUp); setError(''); }}
+            onClick={() => { setIsSignUp(!isSignUp); setError(''); setMessage(''); }}
             className="text-slate-400 text-sm font-bold hover:text-brand-600 transition-colors"
           >
             {isSignUp ? 'Já tem conta? Entrar' : 'Criar nova conta'}
@@ -178,7 +223,7 @@ const AuthScreen: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
           
           {!isSignUp && (
             <button 
-              onClick={() => { setIsForgotPassword(true); setError(''); }}
+              onClick={() => { setIsForgotPassword(true); setError(''); setMessage(''); }}
               className="text-slate-400 text-xs hover:text-brand-600 transition-colors"
             >
               Esqueci minha senha
